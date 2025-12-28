@@ -1,0 +1,91 @@
+name: Terraform Staging
+
+on:
+  push:
+    branches: [ "feature/games" ]
+
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply changes (true) or plan only (false)"
+        required: false
+        default: "true"
+      branch:
+        description: "Branch to run the workflow against (must be feature/games)"
+        required: false
+        default: "feature/games"
+      tf_working_dir:
+        description: "Terraform working directory"
+        required: false
+        default: "IMDB-crawller/terraform"
+
+jobs:
+  terraform:
+    if: ${{ github.ref == 'refs/heads/feature/games' || (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'feature/games') }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # Auth strategy: prefer OIDC role if provided; fallback to access keys
+      - name: Configure AWS credentials via OIDC
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials via access keys (fallback)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        run: |
+          terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        run: |
+          terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        run: |
+          terraform plan -input=false -out=tfplan
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ github.event.inputs.tf_working_dir }}/tfplan
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.apply == 'true' }}
+        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        run: |
+          terraform apply -auto-approve tfplan || terraform apply -auto-approve
+
+      - name: Show Terraform Outputs
+        if: ${{ github.event.inputs.apply == 'true' }}
+        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        run: |
+          terraform output -json > outputs.json
+          cat outputs.json

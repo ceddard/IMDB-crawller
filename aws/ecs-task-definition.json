@@ -1,0 +1,46 @@
+{
+  "family": "imdb-scraper",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "YOUR_AWS_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/imdb-scraper:latest",
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/imdb-scraper",
+          "awslogs-region": "YOUR_REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "environment": [
+        {
+          "name": "SCRAPE_URL",
+          "value": "https://www.imdb.com/pt/search/title/?title_type=video_game"
+        },
+        {
+          "name": "OUT_JSONL",
+          "value": "imdb_filmes.jsonl.gz"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "YOUR_REGION"
+        },
+        {
+          "name": "S3_BUCKET",
+          "value": "your-datalake-bucket"
+        },
+        {
+          "name": "S3_PREFIX",
+          "value": "imdb/"
+        }
+      ]
+    }
+  ],
+  "taskRoleArn": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/ecsTaskRole-imdb-scraper",
+  "executionRoleArn": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/ecsTaskExecutionRole"
+}
