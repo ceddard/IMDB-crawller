@@ -1,6 +1,7 @@
 """S3 upload functionality."""
 
 import logging
+import os
 from typing import Optional
 
 import boto3

@@ -217,18 +217,16 @@ async def run_crawl_pipeline(
                 
                 t_map_ms = (datetime.now(timezone.utc).timestamp() - t_map_start) * 1000
                 
-                # Stream records if enabled (don't accumulate in memory)
                 if streaming and stream_handler:
-                    stream_handler.add_records(records)
+                    stream_handler.add_records(records, page_no)
                     total_records = stream_handler.record_count
                 else:
                     collected.extend(records)
                     total_records = len(collected)
                 
                 if pages_done % 10 == 0:
-                    # Save minimal state (not full data if streaming)
                     if streaming:
-                        progress_mgr.save(after, pages_done, [])  # Don't save records, just cursor
+                        progress_mgr.save(after, pages_done, [])
                     else:
                         progress_mgr.save(after, pages_done, collected)
                 
@@ -267,7 +265,6 @@ async def run_crawl_pipeline(
                 except asyncio.CancelledError:
                     logger.debug("Pending request cancelled")
             
-            # Final save only if not streaming
             if not streaming:
                 if collected:
                     progress_mgr.save(after, page_no, collected)
