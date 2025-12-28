@@ -4,31 +4,42 @@ import math
 import os
 import json
 import gzip
+import logging
 from datetime import datetime, timezone
 import pandas as pd
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 
+# Configuração do logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
 # Carrega variáveis do arquivo .env se existir
 load_dotenv()
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    # Se a variável de ambiente HEADLESS for 'false', o navegador abrirá visível
+    headless_mode = os.getenv("HEADLESS", "true").lower() != "false"
+    browser = p.chromium.launch(headless=headless_mode)
     # Adicionando um User-Agent para evitar bloqueios básicos
     context = browser.new_context(
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
     )
     page = context.new_page()
     scrape_url = os.getenv("SCRAPE_URL", "https://www.imdb.com/pt/search/title/?title_type=video_game")
-    print(f"Iniciando scraping de: {scrape_url}")
+    logger.info(f"Iniciando scraping de: {scrape_url}")
     page.goto(scrape_url)
     
     # Espera o carregamento inicial da lista
     try:
         page.wait_for_selector(".ipc-metadata-list-summary-item", timeout=15000)
     except Exception:
-        print("Aviso: Seletor de itens não encontrado no tempo esperado. Verificando conteúdo...")
+        logger.warning("Seletor de itens não encontrado no tempo esperado. Verificando conteúdo...")
 
     per_page = 50
     total_text = None
@@ -43,7 +54,7 @@ with sync_playwright() as p:
                 digits = ''.join(ch for ch in m.group(1) if ch.isdigit())
                 total = int(digits) if digits else 0
                 pages = math.ceil(total / per_page)
-                print(f"Total resultados: {total} -> iterações necessárias (por {per_page}): {pages}")
+                logger.info(f"Total resultados: {total} -> iterações necessárias (por {per_page}): {pages}")
             else:
                 total_text = None
         except:
@@ -52,17 +63,13 @@ with sync_playwright() as p:
     data = []
     page_index = 1
     while True:
-        print(f"Visitando página {page_index}")
+        logger.info(f"Visitando página {page_index} de {pages}")
         # Tenta seletores diferentes para os itens da lista
         items = page.query_selector_all(".ipc-metadata-list-summary-item") or \
                 page.query_selector_all("[data-testid='dli-parent']")
         
-        print(f"Encontrados {len(items)} itens nesta página.")
-        
         if len(items) == 0:
-            # Se não achou nada, tira um print para debug (opcional)
-            # page.screenshot(path=f"debug_page_{page_index}.png")
-            print("Nenhum item encontrado. Verifique se a página carregou corretamente.")
+            logger.error("Nenhum item encontrado. Verifique se a página carregou corretamente.")
 
         for item in items:
             try:
@@ -97,7 +104,7 @@ with sync_playwright() as p:
         
         if next_button:
             try:
-                print("Botão 'Ver mais' encontrado. Carregando próxima leva...")
+                logger.info("Botão 'Ver mais' encontrado. Carregando próxima leva...")
                 next_button.scroll_into_view_if_needed()
                 next_button.click()
                 # Espera os novos itens carregarem
@@ -108,10 +115,10 @@ with sync_playwright() as p:
                 if page_index > 200: 
                     break
             except Exception as e:
-                print(f"Erro ao clicar no botão: {e}")
+                logger.error(f"Erro ao clicar no botão: {e}")
                 break
         else:
-            print("Fim da lista ou botão 'Ver mais' não encontrado.")
+            logger.info("Fim da lista ou botão 'Ver mais' não encontrado.")
             break
 
     try:
@@ -121,7 +128,7 @@ with sync_playwright() as p:
         with gzip.open(out_jsonl, "wt", encoding="utf-8") as f:
             for row in data:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        print(f"JSONL GZIP salvo: {out_jsonl}")
+        logger.info(f"JSONL GZIP salvo: {out_jsonl}")
 
         s3_bucket = os.getenv("S3_BUCKET", "datalake-imdb-656661782834-staging")
         s3_prefix = os.getenv("S3_PREFIX", "imdb/")
@@ -130,8 +137,8 @@ with sync_playwright() as p:
             try:
                 s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-east-1"))
                 s3.upload_file(out_jsonl, s3_bucket, s3_key)
-                print(f"Enviado ao S3: s3://{s3_bucket}/{s3_key}")
+                logger.info(f"Enviado ao S3: s3://{s3_bucket}/{s3_key}")
             except (BotoCoreError, ClientError) as e:
-                print("Falha no upload S3:", e)
+                logger.error(f"Falha no upload S3: {e}")
     except Exception as e:
-        print("Erro ao salvar/enviar JSONL:", e)
+        logger.error(f"Erro ao salvar/enviar JSONL: {e}")
