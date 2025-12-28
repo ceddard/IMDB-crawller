@@ -22,7 +22,7 @@ jobs:
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-      TF_DIR: IMDB-crawller/terraform
+      TF_DIR: terraform
 
     steps:
       - name: Checkout
