@@ -4,6 +4,7 @@ import gzip
 import json
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -46,33 +47,41 @@ class StreamingOutputHandler:
     def _open_file(self):
         """Open gzip file for appending."""
         if self.file_handle is None:
-            # Open in append mode if file exists, otherwise create new
             mode = 'ab' if os.path.exists(self.output_file) else 'wb'
             self.file_handle = gzip.open(self.output_file, mode)
             logger.info(f"Opened output file: {self.output_file}")
     
     def add_record(self, record: Dict[str, Any]) -> None:
-        """Add a single record to the stream.
-        
+        """Add a single record to the stream with a unique UUID.
+
         Args:
             record: Record to add
         """
         self._open_file()
-        self.buffer.append(record)
+        record_with_uuid = {"uuid": str(uuid.uuid4()), **record}
+        self.buffer.append(record_with_uuid)
         self.record_count += 1
-        
-        # Flush buffer if it reaches the threshold
+
         if len(self.buffer) >= self.buffer_size:
             self.flush()
     
-    def add_records(self, records: list) -> None:
-        """Add multiple records to the stream.
-        
+    def add_records(self, records: list, page_no: int) -> None:
+        """Add multiple records to the stream and upload to S3 every 10 pages.
+
         Args:
             records: Records to add
+            page_no: Current page number
         """
         for record in records:
             self.add_record(record)
+
+        if page_no % 10 == 0:
+            logger.info(f"Uploading to S3 after processing page {page_no}...")
+            self.flush()
+            if self.upload_to_s3():
+                logger.info(f"✅ Successfully uploaded to S3 after page {page_no}")
+            else:
+                logger.warning(f"⚠️ Failed to upload to S3 after page {page_no}")
     
     def flush(self) -> None:
         """Flush buffered records to file."""
@@ -85,7 +94,7 @@ class StreamingOutputHandler:
                 self.file_handle.write((line + '\n').encode('utf-8'))
             
             self.file_handle.flush()
-            os.fsync(self.file_handle.fileno())  # Force disk sync
+            os.fsync(self.file_handle.fileno())
             
             logger.debug(f"Flushed {len(self.buffer)} records to {self.output_file}")
             self.buffer.clear()
@@ -100,17 +109,14 @@ class StreamingOutputHandler:
             True if successful, False otherwise
         """
         try:
-            # Flush remaining records
             if self.buffer:
                 self.flush()
             
-            # Close file
             if self.file_handle:
                 self.file_handle.close()
                 self.file_handle = None
                 logger.info(f"Closed output file: {self.output_file} ({self.record_count} records)")
             
-            # Verify file size
             if os.path.exists(self.output_file):
                 file_size = os.path.getsize(self.output_file)
                 logger.info(f"Output file size: {file_size:,} bytes ({self.record_count} records)")
