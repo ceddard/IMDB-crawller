@@ -8,12 +8,11 @@ terraform {
     }
   }
 
-  # Uncomment to use S3 backend for state
-  # backend "s3" {
-  #   bucket = "your-terraform-state-bucket"
-  #   key    = "imdb-scraper/terraform.tfstate"
-  #   region = "us-east-1"
-  # }
+  backend "s3" {
+    bucket = "datalake-imdb-656661782834-staging"
+    key    = "terraform/state/imdb-scraper.tfstate"
+    region = "us-east-1"
+  }
 }
 
 provider "aws" {
