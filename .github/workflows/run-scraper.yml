@@ -1,0 +1,64 @@
+name: Run IMDb Scraper
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'  # Executa todo dia às 2h UTC
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Run ECS Task
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster imdb-scraper \
+            --task-definition imdb-scraper \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.ECS_SUBNETS }}],securityGroups=[${{ secrets.ECS_SECURITY_GROUPS }}],assignPublicIp=ENABLED}" \
+            --overrides '{
+              "containerOverrides": [{
+                "name": "imdb-scraper",
+                "environment": [
+                  {"name": "SCRAPE_URL", "value": "${{ secrets.SCRAPE_URL }}"},
+                  {"name": "S3_BUCKET", "value": "${{ secrets.S3_BUCKET }}"},
+                  {"name": "S3_PREFIX", "value": "${{ secrets.S3_PREFIX }}"},
+                  {"name": "AWS_REGION", "value": "${{ secrets.AWS_REGION }}"}
+                ]
+              }]
+            }' \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          
+          echo "Task ARN: $TASK_ARN"
+          echo "✅ Scraper task started: $TASK_ARN"
+          
+          # Wait for task to complete
+          echo "Waiting for task to complete..."
+          aws ecs wait tasks-stopped --cluster imdb-scraper --tasks $TASK_ARN
+          
+          # Get task exit code
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster imdb-scraper \
+            --tasks $TASK_ARN \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+          
+          echo "Task completed with exit code: $EXIT_CODE"
+          
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "❌ Task failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+          
+          echo "✅ Scraper completed successfully"

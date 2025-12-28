@@ -86,12 +86,12 @@ with sync_playwright() as p:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         print(f"JSONL GZIP salvo: {out_jsonl}")
 
-        s3_bucket = os.getenv("S3_BUCKET")
+        s3_bucket = os.getenv("S3_BUCKET", "datalake-imdb-656661782834-staging")
         s3_prefix = os.getenv("S3_PREFIX", "imdb/")
         if s3_bucket:
             s3_key = s3_prefix.rstrip("/") + "/" + os.path.basename(out_jsonl)
             try:
-                s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION"))
+                s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-east-1"))
                 s3.upload_file(out_jsonl, s3_bucket, s3_key)
                 print(f"Enviado ao S3: s3://{s3_bucket}/{s3_key}")
             except (BotoCoreError, ClientError) as e:
