@@ -2,10 +2,13 @@
 IMDb Crawler Pipeline - Main Entry Point
 
 Simple orchestrator that delegates all functionality to the service layer.
+Supports both batch and streaming modes.
 """
 
 import asyncio
 import logging
+import os
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
@@ -14,6 +17,7 @@ from service import (
     OutputHandler,
     run_crawl_pipeline,
 )
+from service.streaming_output import StreamingOutputHandler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,34 +30,32 @@ load_dotenv()
 
 
 async def main():
-    """Main entry point - simplified orchestration."""
+    """Main entry point - ALWAYS uses streaming to avoid OOM."""
     config = Config()
     logger.info(f"Configuration: {config}")
+    run_start_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     
-    records = await run_crawl_pipeline(
-        config=config,
-        per_page=config.per_page,
-        max_pages=config.max_pages,
-        worker_count=config.worker_count,
-        resume=config.resume
-    )
+    # ALWAYS use streaming mode to prevent memory exhaustion
+    logger.info("🌊 Running in STREAMING mode (memory-safe incremental save)")
     
-    if not records:
-        logger.warning("No records collected")
-        return
-    
-    logger.info(f"Crawl complete: {len(records)} records")
-    
-    output_handler = OutputHandler(
+    with StreamingOutputHandler(
+        output_file=config.output_file,
         s3_bucket=config.s3_bucket,
-        s3_prefix=config.s3_prefix
-    )
-    success, output_file = output_handler.save_and_upload(records, config.output_file)
-    
-    if success:
-        logger.info(f"Data saved to {output_file}")
-    else:
-        logger.error("Failed to save data")
+        s3_prefix=config.s3_prefix,
+        buffer_size=50,  # Flush every 50 records
+        run_start_ts=run_start_ts
+    ) as stream_handler:
+        await run_crawl_pipeline(
+            config=config,
+            per_page=config.per_page,
+            max_pages=config.max_pages,
+            worker_count=config.worker_count,
+            resume=config.resume,
+            streaming=True,
+            stream_handler=stream_handler
+        )
+        
+        logger.info(f"✅ Crawl complete: {stream_handler.record_count} records streamed")
 
 
 if __name__ == "__main__":

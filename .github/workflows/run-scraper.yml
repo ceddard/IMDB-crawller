@@ -37,24 +37,17 @@ jobs:
             --output text)
           
           echo "Task ARN: $TASK_ARN"
-          echo "✅ Scraper task started: $TASK_ARN"
-          
-          # Wait for task to complete
-          echo "Waiting for task to complete..."
-          aws ecs wait tasks-stopped --cluster imdb-scraper --tasks $TASK_ARN
-          
-          # Get task exit code
-          EXIT_CODE=$(aws ecs describe-tasks \
-            --cluster imdb-scraper \
-            --tasks $TASK_ARN \
-            --query 'tasks[0].containers[0].exitCode' \
-            --output text)
-          
-          echo "Task completed with exit code: $EXIT_CODE"
-          
-          if [ "$EXIT_CODE" != "0" ]; then
-            echo "❌ Task failed with exit code $EXIT_CODE"
-            exit 1
-          fi
-          
-          echo "✅ Scraper completed successfully"
+          echo "✅ Scraper task started successfully!"
+          echo ""
+          echo "📊 Monitor task progress:"
+          echo "  - AWS Console: https://console.aws.amazon.com/ecs/home?region=${{ secrets.AWS_REGION }}#/clusters/imdb-scraper/tasks"
+          echo "  - CloudWatch Logs: https://console.aws.amazon.com/cloudwatch/home?region=${{ secrets.AWS_REGION }}#logsV2:log-groups"
+          echo ""
+          echo "🔍 Check task status:"
+          echo "  aws ecs describe-tasks --cluster imdb-scraper --tasks $TASK_ARN"
+          echo ""
+          echo "📋 View logs:"
+          echo "  aws logs tail /aws/ecs/imdb-scraper --follow"
+          echo ""
+          echo "⏱️ The task will run independently and may take several hours to complete."
+          echo "   Check S3 bucket for output: s3://${{ secrets.S3_BUCKET }}/${{ secrets.S3_PREFIX }}"

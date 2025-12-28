@@ -85,7 +85,9 @@ async def run_crawl_pipeline(
     per_page: int = 100,
     max_pages: int | str = "all",
     worker_count: Optional[int] = None,
-    resume: bool = True
+    resume: bool = True,
+    streaming: bool = False,
+    stream_handler: Optional[Any] = None
 ) -> List[Dict[str, Any]]:
     """
     Main crawl pipeline orchestrator.
@@ -96,9 +98,11 @@ async def run_crawl_pipeline(
         max_pages: Max pages to fetch (int or 'all'/'unlimited')
         worker_count: Thread workers for transformation (1-24)
         resume: Resume from saved progress if available
+        streaming: Enable streaming output (save incrementally)
+        stream_handler: StreamingOutputHandler instance (if streaming=True)
         
     Returns:
-        List of Bronze records
+        List of Bronze records (or empty if streaming)
     """
     graphql_client = GraphQLClient(config, per_page=per_page)
     progress_mgr = ProgressManager()
@@ -212,13 +216,24 @@ async def run_crawl_pipeline(
                         records = [TitleNode.transform(item.get("node", item), page_no) for item in items]
                 
                 t_map_ms = (datetime.now(timezone.utc).timestamp() - t_map_start) * 1000
-                collected.extend(records)
+                
+                # Stream records if enabled (don't accumulate in memory)
+                if streaming and stream_handler:
+                    stream_handler.add_records(records)
+                    total_records = stream_handler.record_count
+                else:
+                    collected.extend(records)
+                    total_records = len(collected)
                 
                 if pages_done % 10 == 0:
-                    progress_mgr.save(after, pages_done, collected)
+                    # Save minimal state (not full data if streaming)
+                    if streaming:
+                        progress_mgr.save(after, pages_done, [])  # Don't save records, just cursor
+                    else:
+                        progress_mgr.save(after, pages_done, collected)
                 
                 logger.info(
-                    f"Processed page {pages_done} items={len(items)} total={len(collected)} "
+                    f"Processed page {pages_done} items={len(items)} total={total_records} "
                     f"remaining={remaining} has_next={has_next} "
                     f"t_request_ms={t_req_ms:.1f} t_map_ms={t_map_ms:.1f} delay_ms={graphql_client.current_delay_sec*1000:.0f}"
                 )
@@ -252,18 +267,22 @@ async def run_crawl_pipeline(
                 except asyncio.CancelledError:
                     logger.debug("Pending request cancelled")
             
-            if collected:
-                progress_mgr.save(after, page_no, collected)
-                logger.info(f"Final save: {len(collected)} total records")
+            # Final save only if not streaming
+            if not streaming:
+                if collected:
+                    progress_mgr.save(after, page_no, collected)
+                    logger.info(f"Final save: {len(collected)} total records")
+            else:
+                logger.info(f"Streaming complete: {stream_handler.record_count if stream_handler else 0} records")
     
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
-        if collected:
+        if not streaming and collected:
             progress_mgr.save(after, page_no, collected)
             logger.info(f"Progress saved: {len(collected)} records")
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
-        if collected:
+        if not streaming and collected:
             progress_mgr.save(after, page_no, collected)
     
-    return collected
+    return collected if not streaming else []

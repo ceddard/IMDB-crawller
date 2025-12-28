@@ -7,6 +7,7 @@ from service.error_handler import ErrorHandler, is_rate_limited, validate_graphq
 from service.s3_uploader import S3Uploader
 from service.config import Config
 from service.output_handler import OutputHandler
+from service.streaming_output import StreamingOutputHandler
 from service.pipeline import (
     run_crawl_pipeline,
     find_title_list,
@@ -24,6 +25,7 @@ __all__ = [
     "S3Uploader",
     "Config",
     "OutputHandler",
+    "StreamingOutputHandler",
     "run_crawl_pipeline",
     "find_title_list",
     "find_page_info",
