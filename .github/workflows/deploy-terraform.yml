@@ -2,12 +2,6 @@ name: Terraform Apply
 
 on:
   workflow_dispatch:
-    inputs:
-      apply:
-        description: "Apply infrastructure (true) or plan only (false)"
-        type: boolean
-        required: false
-        default: false
 
 jobs:
   terraform:
@@ -64,11 +58,9 @@ jobs:
           path: ${{ env.TF_DIR }}/tfplan
 
       - name: Terraform Apply
-        if: github.event.inputs.apply == 'true'
         working-directory: ${{ env.TF_DIR }}
         run: terraform apply -auto-approve tfplan
 
       - name: Show Terraform Outputs
-        if: github.event.inputs.apply == 'true'
         working-directory: ${{ env.TF_DIR }}
         run: terraform output -json
