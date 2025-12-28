@@ -30,6 +30,7 @@ jobs:
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      TF_WORKING_DIR: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_working_dir || 'IMDB-crawller/terraform' }}
 
     steps:
       - name: Checkout
@@ -56,19 +57,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Debug: show working directory and list files
+        run: |
+          echo "TF_WORKING_DIR=${{ env.TF_WORKING_DIR }}"
+          ls -la "${{ env.TF_WORKING_DIR }}"
+
       - name: Terraform Init
-        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform init -input=false
 
       - name: Terraform Validate
-        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform validate
 
       - name: Terraform Plan
         id: plan
-        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform plan -input=false -out=tfplan
 
@@ -76,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
-          path: ${{ github.event.inputs.tf_working_dir }}/tfplan
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
 
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
