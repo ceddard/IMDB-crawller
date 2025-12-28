@@ -1,5 +1,5 @@
 # Use official Playwright Python image with browsers preinstalled
-FROM mcr.microsoft.com/playwright/python:v1.49.0-focal
+FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy
 
 WORKDIR /app
 COPY requirements.txt /app/
