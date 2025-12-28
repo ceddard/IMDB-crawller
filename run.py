@@ -8,7 +8,10 @@ from datetime import datetime
 import pandas as pd
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+from dotenv import load_dotenv
 
+# Carrega variáveis do arquivo .env se existir
+load_dotenv()
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -77,7 +80,6 @@ with sync_playwright() as p:
             print("Link 'next' não encontrado; finalizando varredura.")
             break
 
-    # Persistir como JSONL GZIP e enviar ao S3 (opcional)
     try:
         timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         out_jsonl = os.getenv("OUT_JSONL", f"imdb_filmes_{timestamp}.jsonl.gz")
