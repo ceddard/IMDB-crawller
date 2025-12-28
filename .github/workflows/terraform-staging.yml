@@ -1,9 +1,6 @@
 name: Terraform Staging
 
 on:
-  push:
-    branches: [ "feature/games" ]
-
   workflow_dispatch:
     inputs:
       apply:
@@ -13,7 +10,6 @@ on:
 
 jobs:
   terraform:
-    if: github.ref == 'refs/heads/feature/games'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
