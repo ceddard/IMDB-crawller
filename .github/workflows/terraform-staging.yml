@@ -59,8 +59,8 @@ jobs:
 
       - name: Debug: show working directory and list files
         run: |
-          echo "TF_WORKING_DIR=${{ env.TF_WORKING_DIR }}"
-          ls -la "${{ env.TF_WORKING_DIR }}"
+          echo "TF_WORKING_DIR=$TF_WORKING_DIR"
+          ls -la "$TF_WORKING_DIR"
 
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -85,14 +85,14 @@ jobs:
           path: ${{ env.TF_WORKING_DIR }}/tfplan
 
       - name: Terraform Apply
-        if: ${{ github.event.inputs.apply == 'true' }}
-        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true' }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform apply -auto-approve tfplan || terraform apply -auto-approve
 
       - name: Show Terraform Outputs
-        if: ${{ github.event.inputs.apply == 'true' }}
-        working-directory: ${{ github.event.inputs.tf_working_dir }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true' }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform output -json > outputs.json
           cat outputs.json
