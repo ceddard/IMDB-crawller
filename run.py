@@ -4,7 +4,7 @@ import math
 import os
 import json
 import gzip
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -15,13 +15,25 @@ load_dotenv()
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
-    page = browser.new_page()
+    # Adicionando um User-Agent para evitar bloqueios básicos
+    context = browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    )
+    page = context.new_page()
     scrape_url = os.getenv("SCRAPE_URL", "https://www.imdb.com/pt/search/title/?title_type=video_game")
+    print(f"Iniciando scraping de: {scrape_url}")
     page.goto(scrape_url)
     
+    # Espera o carregamento inicial da lista
+    try:
+        page.wait_for_selector(".ipc-metadata-list-summary-item", timeout=15000)
+    except Exception:
+        print("Aviso: Seletor de itens não encontrado no tempo esperado. Verificando conteúdo...")
+
     per_page = 50
     total_text = None
-    total_el = page.query_selector(".sc-2d056ab8-3.fhbjmI")
+    # Seletor atualizado para o total de resultados
+    total_el = page.query_selector(".sc-2d056ab8-3.fhbjmI") or page.query_selector("[data-testid='dli-titles-metadata']")
     if total_el:
         try:
             total_text = total_el.inner_text()
@@ -41,47 +53,70 @@ with sync_playwright() as p:
     page_index = 1
     while True:
         print(f"Visitando página {page_index}")
-        items = page.query_selector_all(".ipc-metadata-list-summary-item")
+        # Tenta seletores diferentes para os itens da lista
+        items = page.query_selector_all(".ipc-metadata-list-summary-item") or \
+                page.query_selector_all("[data-testid='dli-parent']")
+        
         print(f"Encontrados {len(items)} itens nesta página.")
+        
+        if len(items) == 0:
+            # Se não achou nada, tira um print para debug (opcional)
+            # page.screenshot(path=f"debug_page_{page_index}.png")
+            print("Nenhum item encontrado. Verifique se a página carregou corretamente.")
+
         for item in items:
             try:
-                title_el = item.query_selector(".ipc-title__text")
+                title_el = item.query_selector(".ipc-title__text") or \
+                           item.query_selector("h3")
                 title = title_el.inner_text() if title_el else None
 
-                metadata = item.query_selector_all(".dli-title-metadata-item")
+                metadata = item.query_selector_all(".dli-title-metadata-item") or \
+                           item.query_selector_all(".sc-b189961a-8")
                 year = metadata[0].inner_text() if metadata else None
 
-                rating_el = item.query_selector(".ipc-rating-star--base")
+                rating_el = item.query_selector(".ipc-rating-star--base") or \
+                            item.query_selector("[aria-label^='IMDb rating']")
                 rating = rating_el.inner_text().split()[0] if rating_el else None
-                data.append({
-                    "title": title,
-                    "year": year,
-                    "rating": rating,
-                    "page": page_index,
-                    "source_url": scrape_url,
-                    "scraped_at_utc": datetime.utcnow().isoformat()
-                })
+                
+                if title:
+                    data.append({
+                        "title": title,
+                        "year": year,
+                        "rating": rating,
+                        "page": page_index,
+                        "source_url": scrape_url,
+                        "scraped_at_utc": datetime.now(timezone.utc).isoformat()
+                    })
             except Exception:
                 pass
 
-        next_link = page.query_selector('a[rel="next"]')
-        if not next_link:
-            next_link = page.query_selector("a:has-text('Next')") or page.query_selector("a:has-text('Próximo')") or page.query_selector("a:has-text('Próxima')")
-        if next_link:
+        # O IMDb novo usa um botão "Load More" (Ver mais) em vez de paginação tradicional
+        next_button = page.query_selector("button.ipc-see-more__button") or \
+                      page.query_selector(".ipc-see-more__button") or \
+                      page.query_selector("a[rel='next']")
+        
+        if next_button:
             try:
-                next_link.click()
-                page.wait_for_load_state('networkidle')
-                page.wait_for_timeout(1000)
+                print("Botão 'Ver mais' encontrado. Carregando próxima leva...")
+                next_button.scroll_into_view_if_needed()
+                next_button.click()
+                # Espera os novos itens carregarem
+                page.wait_for_timeout(3000) 
                 page_index += 1
-            except Exception:
-                print("Erro ao clicar em next; parando iterações.")
+                
+                # Limite de segurança para não rodar infinitamente em testes
+                if page_index > 200: 
+                    break
+            except Exception as e:
+                print(f"Erro ao clicar no botão: {e}")
                 break
         else:
-            print("Link 'next' não encontrado; finalizando varredura.")
+            print("Fim da lista ou botão 'Ver mais' não encontrado.")
             break
 
     try:
-        timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        # Corrigindo o formato do timestamp para Windows (sem colons)
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
         out_jsonl = os.getenv("OUT_JSONL", f"imdb_filmes_{timestamp}.jsonl.gz")
         with gzip.open(out_jsonl, "wt", encoding="utf-8") as f:
             for row in data:
