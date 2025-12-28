@@ -3,6 +3,10 @@ name: Terraform Apply
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  secrets: write
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
@@ -52,3 +56,16 @@ jobs:
       - name: Show Terraform Outputs
         working-directory: ${{ env.TF_DIR }}
         run: terraform output -json
+
+      - name: Update GitHub Secrets
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extrai o objeto github_secrets_summary e itera sobre as chaves/valores
+          terraform output -json github_secrets_summary | jq -r 'to_entries[] | "\(.key)=\(.value)"' | while read line; do
+            key=$(echo $line | cut -d'=' -f1)
+            value=$(echo $line | cut -d'=' -f2-)
+            echo "Setting secret: $key"
+            gh secret set "$key" --body "$value"
+          done
