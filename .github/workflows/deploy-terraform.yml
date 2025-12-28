@@ -60,7 +60,7 @@ jobs:
       - name: Update GitHub Secrets
         working-directory: ${{ env.TF_DIR }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           # Extrai o objeto github_secrets_summary e itera sobre as chaves/valores
           terraform output -json github_secrets_summary | jq -r 'to_entries[] | "\(.key)=\(.value)"' | while read line; do
