@@ -2,8 +2,6 @@ name: Run IMDb Scraper
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * *'  # Executa todo dia às 2h UTC
 
 jobs:
   run-scraper:
@@ -26,7 +24,7 @@ jobs:
             --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.ECS_SUBNETS }}],securityGroups=[${{ secrets.ECS_SECURITY_GROUPS }}],assignPublicIp=ENABLED}" \
             --overrides '{
               "containerOverrides": [{
-                "name": "imdb-scraper",
+                "name": "app",
                 "environment": [
                   {"name": "SCRAPE_URL", "value": "${{ secrets.SCRAPE_URL }}"},
                   {"name": "S3_BUCKET", "value": "${{ secrets.S3_BUCKET }}"},
