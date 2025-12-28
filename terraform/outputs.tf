@@ -53,11 +53,6 @@ output "ecs_subnets" {
   value       = join(",", data.aws_subnets.default.ids)
 }
 
-output "github_actions_role_arn" {
-  description = "IAM role ARN for GitHub Actions (AWS_ROLE_TO_ASSUME)"
-  value       = aws_iam_role.github_actions.arn
-}
-
 output "ecs_task_role_arn" {
   description = "IAM role ARN for ECS task"
   value       = aws_iam_role.ecs_task.arn
@@ -79,7 +74,6 @@ output "github_secrets_summary" {
   value = {
     AWS_ACCOUNT_ID         = data.aws_caller_identity.current.account_id
     AWS_REGION             = var.aws_region
-    AWS_ROLE_TO_ASSUME     = aws_iam_role.github_actions.arn
     ECS_CLUSTER            = aws_ecs_cluster.main.name
     ECS_TASK_DEFINITION    = aws_ecs_task_definition.scraper.family
     ECS_SUBNETS            = join(",", data.aws_subnets.default.ids)
