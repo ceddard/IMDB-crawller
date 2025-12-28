@@ -5,6 +5,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from service.exceptions import ProgressSaveError, ProgressLoadError
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class ProgressManager:
                 json.dump(state, f, indent=2, default=str)
             logger.debug(f"Progress saved: {page_no} pages, {len(records)} records")
         except Exception as e:
-            logger.warning(f"Failed to save progress: {e}")
+            raise ProgressSaveError(f"Failed to save progress: {e}")
     
     def load(self) -> Optional[Dict[str, Any]]:
         """Load previous crawl progress state.
@@ -61,8 +62,7 @@ class ProgressManager:
             )
             return state
         except Exception as e:
-            logger.warning(f"Failed to load progress: {e}")
-            return None
+            raise ProgressLoadError(f"Failed to load progress: {e}")
     
     def clear(self) -> None:
         """Clear saved progress state."""

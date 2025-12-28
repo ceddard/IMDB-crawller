@@ -1,11 +1,15 @@
 """S3 upload functionality."""
 
+import json
 import logging
 import os
 from typing import Optional
+from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+
+from service.exceptions import S3UploadError
 
 logger = logging.getLogger(__name__)
 
@@ -13,17 +17,19 @@ logger = logging.getLogger(__name__)
 class S3Uploader:
     """Handles uploading files to AWS S3."""
     
-    def __init__(self, bucket: Optional[str] = None, prefix: str = "imdb/bronze/", region: str = "us-east-1"):
+    def __init__(self, bucket: Optional[str] = None, prefix: str = "imdb/bronze/", region: str = "us-east-1", run_timestamp: Optional[str] = None):
         """Initialize S3 uploader.
         
         Args:
             bucket: S3 bucket name
             prefix: S3 key prefix
             region: AWS region
+            run_timestamp: Run timestamp for partitioning
         """
         self.bucket = bucket
         self.prefix = prefix
         self.region = region
+        self.run_timestamp = run_timestamp
         self.enabled = bool(self.bucket)
     
     def upload(self, file_path: str) -> bool:
@@ -43,20 +49,20 @@ class S3Uploader:
             logger.error(f"File not found: {file_path}")
             return False
         
-        s3_key = f"{self.prefix.rstrip('/')}/{os.path.basename(file_path)}"
-        
         try:
             s3 = boto3.client("s3", region_name=self.region)
-            file_size = os.path.getsize(file_path)
-            logger.info(f"Uploading {file_path} ({file_size} bytes) to s3://{self.bucket}/{s3_key}")
-            
-            s3.upload_file(file_path, self.bucket, s3_key)
-            
-            logger.info(f"Successfully uploaded to S3: s3://{self.bucket}/{s3_key}")
+            basename = os.path.basename(file_path)
+            s3_key = (
+                f"{self.prefix.rstrip('/')}/"
+                f"run={self.run_timestamp}/"
+                f"{basename}"
+            )
+
+            with open(file_path, "rb") as f:
+                s3.upload_fileobj(f, self.bucket, s3_key)
+
+            logger.info(f"Uploaded batch JSONL file to S3: {s3_key}")
             return True
-        except (BotoCoreError, ClientError) as e:
-            logger.error(f"S3 upload failed: {e}")
-            return False
         except Exception as e:
-            logger.error(f"Unexpected error during S3 upload: {e}", exc_info=True)
+            logger.error(f"Failed to upload JSONL file to S3: {e}")
             return False

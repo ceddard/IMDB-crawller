@@ -35,14 +35,13 @@ async def main():
     logger.info(f"Configuration: {config}")
     run_start_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     
-    # ALWAYS use streaming mode to prevent memory exhaustion
     logger.info("🌊 Running in STREAMING mode (memory-safe incremental save)")
     
     with StreamingOutputHandler(
         output_file=config.output_file,
-        s3_bucket=config.s3_bucket,
-        s3_prefix=config.s3_prefix,
-        buffer_size=50,  # Flush every 50 records
+        s3_bucket="datalake-imdb-656661782834-staging",
+        s3_prefix="imdb/bronze/",
+        buffer_size=50,
         run_start_ts=run_start_ts
     ) as stream_handler:
         await run_crawl_pipeline(

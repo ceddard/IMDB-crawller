@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from service.exceptions import FileFlushError, FileCloseError
 from service.s3_uploader import S3Uploader
 
 logger = logging.getLogger(__name__)
@@ -33,16 +34,17 @@ class StreamingOutputHandler:
             buffer_size: How many records to buffer before flushing (if using S3)
         """
         self.run_start_ts = run_start_ts or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-        self.output_file = output_file or self._generate_output_file()
-        self.s3_uploader = S3Uploader(bucket=s3_bucket, prefix=s3_prefix)
+        self.output_file = output_file
+        self.s3_uploader = S3Uploader(bucket=s3_bucket, prefix=s3_prefix, run_timestamp=self.run_start_ts)
         self.buffer_size = buffer_size
         self.record_count = 0
         self.file_handle = None
         self.buffer = []
+        self.current_batch_end_page: Optional[int] = None
         
-    def _generate_output_file(self) -> str:
-        """Generate output file path using the pipeline start timestamp."""
-        return f"imdb_data_{self.run_start_ts}.jsonl.gz"
+    def _generate_output_file(self, batch_end_page: int) -> str:
+        """Generate output file path for a batch using only page number."""
+        return f"page-{batch_end_page}.jsonl.gz"
     
     def _open_file(self):
         """Open gzip file for appending."""
@@ -66,22 +68,43 @@ class StreamingOutputHandler:
             self.flush()
     
     def add_records(self, records: list, page_no: int) -> None:
-        """Add multiple records to the stream and upload to S3 every 10 pages.
+        """Add multiple records and manage 10-page batching per file.
+
+        Each batch file aggregates 10 pages and is named with the batch's
+        ending page number plus the run start timestamp, e.g.,
+        imdb_data_page-10_YYYY-MM-DDThh-mm-ss.jsonl.gz
 
         Args:
             records: Records to add
             page_no: Current page number
         """
+        batch_end_page = ((page_no - 1) // 10 + 1) * 10
+
+        if self.current_batch_end_page != batch_end_page:
+            if self.file_handle is not None:
+                logger.info(f"Finalizing batch page {self.current_batch_end_page}: flushing and uploading")
+                self.flush()
+                self.file_handle.close()
+                self.file_handle = None
+                self.upload_to_s3()
+
+            self.current_batch_end_page = batch_end_page
+            self.output_file = self._generate_output_file(batch_end_page)
+            logger.info(f"Starting new batch file: {self.output_file}")
+
         for record in records:
             self.add_record(record)
 
         if page_no % 10 == 0:
-            logger.info(f"Uploading to S3 after processing page {page_no}...")
+            logger.info(f"Completed batch up to page {page_no}. Flushing and uploading {self.output_file}...")
             self.flush()
             if self.upload_to_s3():
-                logger.info(f"✅ Successfully uploaded to S3 after page {page_no}")
+                logger.info(f"✅ Uploaded batch file for pages ending at {page_no}")
             else:
-                logger.warning(f"⚠️ Failed to upload to S3 after page {page_no}")
+                logger.warning(f"⚠️ Failed to upload batch file for pages ending at {page_no}")
+            if self.file_handle is not None:
+                self.file_handle.close()
+                self.file_handle = None
     
     def flush(self) -> None:
         """Flush buffered records to file."""
@@ -99,8 +122,7 @@ class StreamingOutputHandler:
             logger.debug(f"Flushed {len(self.buffer)} records to {self.output_file}")
             self.buffer.clear()
         except Exception as e:
-            logger.error(f"Error flushing records: {e}", exc_info=True)
-            raise
+            raise FileFlushError(f"Error flushing records: {e}")
     
     def close(self) -> bool:
         """Close file and optionally upload to S3.
@@ -123,8 +145,7 @@ class StreamingOutputHandler:
             
             return True
         except Exception as e:
-            logger.error(f"Error closing file: {e}", exc_info=True)
-            return False
+            raise FileCloseError(f"Error closing file: {e}")
     
     def upload_to_s3(self) -> bool:
         """Upload completed file to S3.

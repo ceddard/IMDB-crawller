@@ -23,6 +23,7 @@ from service import (
     ErrorHandler,
     validate_graphql_response,
 )
+from service.exceptions import NetworkError, HTTPStatusError
 
 logger = logging.getLogger(__name__)
 
@@ -170,19 +171,9 @@ async def run_crawl_pipeline(
                     consecutive_errors = 0
                     
                 except httpx.HTTPStatusError as e:
-                    logger.error(f"HTTP {e.response.status_code}: {e}")
-                    consecutive_errors += 1
-                    if consecutive_errors >= max_consecutive_errors:
-                        logger.error(f"Too many errors ({consecutive_errors}), stopping")
-                        break
-                    continue
+                    raise HTTPStatusError(e.response.status_code, f"HTTP {e.response.status_code}: {e}")
                 except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadError) as e:
-                    logger.warning(f"Network error: {e}. Retrying in 5s...")
-                    consecutive_errors += 1
-                    await asyncio.sleep(5)
-                    if consecutive_errors >= max_consecutive_errors:
-                        break
-                    continue
+                    raise NetworkError(f"Network error: {e}")
                 except Exception as e:
                     logger.error(f"Unexpected error: {e}", exc_info=True)
                     break
