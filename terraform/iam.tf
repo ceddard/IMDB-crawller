@@ -1,7 +1,5 @@
-# Data source for AWS account ID
 data "aws_caller_identity" "current" {}
 
-# IAM Role for ECS Task Execution (CloudWatch Logs, ECR pull)
 resource "aws_iam_role" "ecs_task_execution" {
   name = "${var.project_name}-ecs-task-execution-role"
 
@@ -26,7 +24,6 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# IAM Role for ECS Task (S3 access, application permissions)
 resource "aws_iam_role" "ecs_task" {
   name = "${var.project_name}-ecs-task-role"
 
@@ -70,5 +67,54 @@ resource "aws_iam_role_policy" "ecs_task_s3" {
       }
     ]
   })
+}
+
+resource "aws_iam_role" "databricks_access_role" {
+  name               = "DatabricksAccessRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "s3_access_policy" {
+  name        = "S3AccessPolicy"
+  description = "Policy to allow read/write access to the S3 bucket"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::datalake-imdb-656661782834-staging",
+          "arn:aws:s3:::datalake-imdb-656661782834-staging/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach_s3_policy" {
+  role       = aws_iam_role.databricks_access_role.name
+  policy_arn = aws_iam_policy.s3_access_policy.arn
+}
+
+resource "aws_iam_instance_profile" "databricks_instance_profile" {
+  name = "DatabricksInstanceProfile"
+  role = aws_iam_role.databricks_access_role.name
 }
 
