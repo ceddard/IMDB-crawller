@@ -96,8 +96,10 @@ resource "aws_iam_policy" "s3_access_policy" {
         Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:PutObject",
-          "s3:ListBucket"
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
         ]
         Resource = [
           "arn:aws:s3:::datalake-imdb-656661782834-staging",
@@ -116,5 +118,52 @@ resource "aws_iam_role_policy_attachment" "attach_s3_policy" {
 resource "aws_iam_instance_profile" "databricks_instance_profile" {
   name = "DatabricksInstanceProfile"
   role = aws_iam_role.databricks_access_role.name
+}
+
+resource "aws_iam_role" "databricks_unity_role" {
+  name = "DatabricksUnityRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "databricks_unity_access_policy" {
+  name        = "DatabricksUnityAccessPolicy"
+  description = "Policy for Databricks Unity Catalog access"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+        Resource = [
+          "arn:aws:s3:::datalake-imdb-656661782834-staging",
+          "arn:aws:s3:::datalake-imdb-656661782834-staging/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach_unity_policy" {
+  role       = aws_iam_role.databricks_unity_role.name
+  policy_arn = aws_iam_policy.databricks_unity_access_policy.arn
 }
 
