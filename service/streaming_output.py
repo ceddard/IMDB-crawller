@@ -1,6 +1,5 @@
 """Streaming output handler for real-time data saving."""
 
-import gzip
 import json
 import logging
 import os
@@ -44,13 +43,13 @@ class StreamingOutputHandler:
         
     def _generate_output_file(self, batch_end_page: int) -> str:
         """Generate output file path for a batch using only page number."""
-        return f"page-{batch_end_page}.jsonl.gz"
+        return f"page-{batch_end_page}.jsonl"
     
     def _open_file(self):
-        """Open gzip file for appending."""
+        """Open plain JSONL file for appending."""
         if self.file_handle is None:
-            mode = 'ab' if os.path.exists(self.output_file) else 'wb'
-            self.file_handle = gzip.open(self.output_file, mode)
+            mode = 'a' if os.path.exists(self.output_file) else 'w'
+            self.file_handle = open(self.output_file, mode, encoding="utf-8")
             logger.info(f"Opened output file: {self.output_file}")
     
     def add_record(self, record: Dict[str, Any]) -> None:
@@ -71,13 +70,13 @@ class StreamingOutputHandler:
         """Add multiple records and manage 10-page batching per file.
 
         Each batch file aggregates 10 pages and is named with the batch's
-        ending page number plus the run start timestamp, e.g.,
-        imdb_data_page-10_YYYY-MM-DDThh-mm-ss.jsonl.gz
+        ending page number, e.g., page-10.jsonl
 
         Args:
             records: Records to add
             page_no: Current page number
         """
+        page_no = max(1, page_no)
         batch_end_page = ((page_no - 1) // 10 + 1) * 10
 
         if self.current_batch_end_page != batch_end_page:
@@ -114,7 +113,7 @@ class StreamingOutputHandler:
         try:
             for record in self.buffer:
                 line = json.dumps(record, default=str)
-                self.file_handle.write((line + '\n').encode('utf-8'))
+                self.file_handle.write(line + '\n')
             
             self.file_handle.flush()
             os.fsync(self.file_handle.fileno())
