@@ -78,7 +78,7 @@ class GraphQLClient:
             "sortBy": self.config.graphql_sortby,
             "sortOrder": self.config.graphql_sortorder,
             "titleTypeConstraint": {
-                "anyTitleTypeIds": ["movie", "tvSeries", "short", "tvMiniSeries", "tvMovie", "tvEpisode"],
+                "anyTitleTypeIds": self.config.title_types,
                 "excludeTitleTypeIds": []
             }
         }

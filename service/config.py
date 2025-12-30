@@ -39,6 +39,7 @@ class Config:
         self.locale = os.getenv("LOCALE", "pt-BR")
         self.graphql_sortby = os.getenv("GRAPHQL_SORTBY", "POPULARITY")
         self.graphql_sortorder = os.getenv("GRAPHQL_SORTORDER", "ASC")
+        self.title_types = self._parse_title_types()
     
     @staticmethod
     def _parse_per_page() -> int:
@@ -84,6 +85,32 @@ class Config:
         except ValueError:
             logger.warning(f"Invalid WORKER_COUNT: {worker_count_env}, using default")
             return None
+
+    @staticmethod
+    def _parse_title_types() -> list[str]:
+        """Parse TITLE_TYPES env (comma-separated) with safe defaults."""
+        default_types = [
+            "movie",
+            "tvSeries",
+            "short",
+            "tvEpisode",
+            "tvMiniSeries",
+            "tvMovie",
+            "tvShort",
+            "tvSpecial",
+            "musicVideo",
+            "podcastEpisode",
+            "video",
+            "videoGame",
+            "podcastSeries",
+        ]
+
+        raw = os.getenv("TITLE_TYPES")
+        if not raw:
+            return default_types
+
+        parsed = [t.strip() for t in raw.split(",") if t.strip()]
+        return parsed or default_types
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary for logging."""

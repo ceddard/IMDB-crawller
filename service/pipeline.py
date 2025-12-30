@@ -144,12 +144,23 @@ async def run_crawl_pipeline(
             while True:
                 logger.info(f"Requesting page {page_no + 1} (cursor present={bool(after)})")
                 
+                retry_attempts = 0
+                while retry_attempts < 2:
+                    try:
+                        if next_task is None:
+                            resp, t_req_ms = await graphql_client.fetch_page(aclient, after)
+                        else:
+                            resp, t_req_ms = await next_task
+                        break  # Exit retry loop on success
+                    except Exception as e:
+                        retry_attempts += 1
+                        logger.error(f"Error during fetch_page: {e}. Retrying in 30 seconds ({retry_attempts}/2)...")
+                        await asyncio.sleep(30)
+                else:
+                    logger.error("Max retries reached. Continuing to next page.")
+                    continue
+                
                 try:
-                    if next_task is None:
-                        resp, t_req_ms = await graphql_client.fetch_page(aclient, after)
-                    else:
-                        resp, t_req_ms = await next_task
-                    
                     if error_handler.is_rate_limited(resp):
                         logger.error(f"Rate limited! HTTP {resp.status_code}. Pausing for 60s...")
                         await asyncio.sleep(60)
